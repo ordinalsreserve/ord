@@ -1306,6 +1306,28 @@ impl Index {
     Ok(inscription_id)
   }
 
+  pub(crate) fn get_inscription_satpoint_by_sat(
+    &self,
+    sat: Sat,
+  ) -> Result<Option<SatPoint>> {
+    let rtx = self.database.begin_read()?;
+
+    let Some(satpoint) = rtx
+      .open_table(SAT_TO_SATPOINT)?
+      .get(&sat.store())?
+      .map(|guard| guard.value())
+    else {
+      return Ok(None);
+    };
+
+    // let satpoint = rtx
+    //   .open_table(SEQUENCE_NUMBER_TO_SATPOINT)?
+    //   .get(sequence_number)?
+    //   .map(|satpoint| Entry::load(*satpoint.value()));
+
+    Ok(satpoint)
+  }
+
   pub(crate) fn get_inscription_satpoint_by_id(
     &self,
     inscription_id: InscriptionId,

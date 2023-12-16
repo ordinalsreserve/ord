@@ -20,6 +20,11 @@ use {
 
 mod batch;
 
+enum InscriptionOrSat {
+  InscriptionId(InscriptionId),
+  Sat(Sat),
+}
+
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct InscriptionInfo {
   pub id: InscriptionId,
@@ -95,7 +100,7 @@ pub(crate) struct Inscribe {
   )]
   pub(crate) no_limit: bool,
   #[clap(long, help = "Make inscription a child of <PARENT>.")]
-  pub(crate) parent: Option<InscriptionId>,
+  pub(crate) parent: Option<InscriptionOrSat>,
   #[arg(
     long,
     help = "Amount of postage to include in the inscription. Default `10000sat`."
@@ -241,32 +246,61 @@ impl Inscribe {
   }
 
   fn get_parent_info(
-    parent: Option<InscriptionId>,
+    parent: Option<InscriptionOrSat>,
     index: &Index,
     utxos: &BTreeMap<OutPoint, Amount>,
     client: &Client,
     chain: Chain,
   ) -> Result<Option<ParentInfo>> {
-    if let Some(parent_id) = parent {
-      if let Some(satpoint) = index.get_inscription_satpoint_by_id(parent_id)? {
-        if !utxos.contains_key(&satpoint.outpoint) {
-          return Err(anyhow!(format!("parent {parent_id} not in wallet")));
-        }
-
-        Ok(Some(ParentInfo {
-          destination: get_change_address(client, chain)?,
-          id: parent_id,
-          location: satpoint,
-          tx_out: index
-            .get_transaction(satpoint.outpoint.txid)?
-            .expect("parent transaction not found in index")
-            .output
-            .into_iter()
-            .nth(satpoint.outpoint.vout.try_into().unwrap())
-            .expect("current transaction output"),
-        }))
-      } else {
-        Err(anyhow!(format!("parent {parent_id} does not exist")))
+    if let Some(parent) = parent {
+      match parent {
+        InscriptionOrSat::InscriptionId(inscription_id) => {
+          // Call get_inscription_satpoint_by_id if parent is InscriptionId
+          if let Some(satpoint) = index.get_inscription_satpoint_by_id(inscription_id)? {
+            if !utxos.contains_key(&satpoint.outpoint) {
+              return Err(anyhow!(format!("parent {inscription_id} not in wallet")));
+            }
+    
+            Ok(Some(ParentInfo {
+              destination: get_change_address(client, chain)?,
+              id: inscription_id,
+              location: satpoint,
+              tx_out: index
+                .get_transaction(satpoint.outpoint.txid)?
+                .expect("parent transaction not found in index")
+                .output
+                .into_iter()
+                .nth(satpoint.outpoint.vout.try_into().unwrap())
+                .expect("current transaction output"),
+            }))
+          } else {
+            Err(anyhow!(format!("parent {inscription_id} does not exist")))
+          }
+        },
+        InscriptionOrSat::Sat(sat) => {
+          // Call get_inscription_satpoint_by_sat if parent is Sat
+          if let Some(satpoint) = index.get_inscription_satpoint_by_sat(sat)? {
+            // if let Some(satpoint) = index.get_inscription_satpoint_by_id(parent_id)? {
+            if !utxos.contains_key(&satpoint.outpoint) {
+              return Err(anyhow!(format!("parent {sat} not in wallet")));
+            }
+    
+            Ok(Some(ParentInfo {
+              destination: get_change_address(client, chain)?,
+              id: sat,
+              location: satpoint,
+              tx_out: index
+                .get_transaction(satpoint.outpoint.txid)?
+                .expect("parent transaction not found in index")
+                .output
+                .into_iter()
+                .nth(satpoint.outpoint.vout.try_into().unwrap())
+                .expect("current transaction output"),
+            }))
+          } else {
+            Err(anyhow!(format!("parent {sat} does not exist")))
+          }
+        },
       }
     } else {
       Ok(None)
